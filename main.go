@@ -21,7 +21,7 @@ type argT struct {
 	cli.Helper
 	Port     int `cli:"port" usage:"web server port"  dft:"9080"`
 	Interval int `cli:"interval" usage:"seconds interval between 2 sensor reads"  dft:"15"`
-	Pin      int `cli:"pin" usage:"web server port"  dft:"7"`
+	Pin      int `cli:"pin" usage:"pin for the DHT22 sensor"  dft:"4"`
 }
 
 func main() {
@@ -50,7 +50,7 @@ func run(ctx *cli.Context) error {
 
 		temperature.Set(float64(celsius))
 		humidity.Set(float64(humidityPerc))
-		fmt.Printf("got %fC and %f%%\n", celsius, humidity)
+		fmt.Printf("got %fC and %f %%\n", celsius, humidityPerc)
 	}
 
 	ticker := time.NewTicker(time.Second * time.Duration(args.Interval))
