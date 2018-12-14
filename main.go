@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,6 +23,7 @@ type argT struct {
 	Port     int `cli:"port" usage:"web server port"  dft:"9080"`
 	Interval int `cli:"interval" usage:"seconds interval between 2 sensor reads"  dft:"15"`
 	Pin      int `cli:"pin" usage:"pin for the DHT22 sensor"  dft:"4"`
+	Diff     int `cli:"diff" usage:"Maximum % difference between 2 reads"  dft:"20"`
 }
 
 func main() {
@@ -34,6 +36,7 @@ func run(ctx *cli.Context) error {
 	sensorName := "sensor_"
 	sensorDesc := "DHT22 sensor data."
 	temperature, humidity := setupPrometheus(sensorName, sensorDesc)
+	var lastTemp, lastHum *float32
 
 	update := func() {
 		defer func() {
@@ -48,8 +51,19 @@ func run(ctx *cli.Context) error {
 			return
 		}
 
-		temperature.Set(float64(celsius))
-		humidity.Set(float64(humidityPerc))
+		if lastTemp != nil && diffIsTooHigh(lastTemp, celsius, args) {
+			fmt.Printf("ignored data, scrwed temp: %f \n", celsius)
+			return //the data is screwed
+		}
+		lastTemp = &celsius
+		temperature.Set(float64(*lastTemp))
+
+		if lastHum != nil && diffIsTooHigh(lastHum, humidityPerc, args) {
+			fmt.Printf("ignored humidity data %f \n", humidityPerc)
+			return //the data is screwed
+		}
+		lastHum = &humidityPerc
+		humidity.Set(float64(*lastHum))
 		fmt.Printf("got %fC and %f %%\n", celsius, humidityPerc)
 	}
 
@@ -61,21 +75,27 @@ func run(ctx *cli.Context) error {
 		}
 	}()
 
-	server := setupWebServer(args.Port)
+	runServer(args, ticker)
+	return nil
+}
 
+func runServer(args *argT, ticker *time.Ticker) {
+	server := setupWebServer(args.Port)
 	fmt.Println("Press CTRL-C to exit")
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt)
 	<-quit
 	fmt.Println("Received the close signal ...")
-
 	//close everything
 	ticker.Stop()
 	err := server.Close()
 	if err != nil {
 		fmt.Println(err)
 	}
-	return nil
+}
+
+func diffIsTooHigh(lastTemp *float32, celsius float32, args *argT) bool {
+	return math.Abs(float64(*lastTemp/celsius)*float64(100)) > float64(args.Diff)
 }
 
 func setupWebServer(port int) *http.Server {
